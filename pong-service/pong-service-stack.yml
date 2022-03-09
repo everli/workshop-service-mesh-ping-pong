@@ -1,0 +1,90 @@
+Description: This template deploys the whole stack required to run the pong service with a base task definition.
+  The task definition will later be deployed by the project itself.
+  The template will create the project registry, ECS service and task definition, cloudwatch log group and service discovery.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name that joins all the stacks
+
+  ECSServicesDomain:
+    Type: String
+    Description: DNS namespace used by services e.g. app.local
+    Default: local
+
+Resources:
+  PongRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: "pong-registry"
+
+  # This is the placeholder task definition that will be replaced by the real project when deployed during the CI/CD
+  PongTaskDefinitionBase: 
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      NetworkMode: "awsvpc"
+      RequiresCompatibilities: 
+        - "FARGATE"
+      Cpu: 256
+      Memory: 512
+      ContainerDefinitions: 
+        - 
+          Name: "PongContainer"
+          Image: "httpd:2.4"
+          Cpu: 256
+          PortMappings: 
+            - 
+              ContainerPort: "80"
+              HostPort: "80"
+          EntryPoint: 
+            - "sh"
+            - "-c"
+          Memory: 512
+          Essential: true
+          Command: 
+            -  "/bin/sh -c \"echo '<html> <head> <title>Amazon ECS Sample App</title> <style>body {margin-top: 40px; background-color: #333;} </style> </head><body> <div style=color:white;text-align:center> <h1>Amazon ECS Sample App</h1> <h2>Congratulations!</h2> <p>Your application is now running on a container in Amazon ECS.</p> </div></body></html>' >  /usr/local/apache2/htdocs/index.html && httpd-foreground\""
+
+  PongServiceDiscoveryRecord:
+    Type: 'AWS::ServiceDiscovery::Service'
+    Properties:
+      Name: "pong"
+      DnsConfig:
+        # Find the AWS Cloud Map namespace created earlier with the baseline stack
+        NamespaceId: "ns-hmmsti7qf3gwrz3g"
+        DnsRecords:
+          - Type: A
+            TTL: 300
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+
+  PongECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: "PongService"
+      ServiceRegistries:
+        - 
+          RegistryArn: 
+            'Fn::GetAtt': PongServiceDiscoveryRecord.Arn
+      LaunchType: "FARGATE"
+      PlatformVersion: "1.4.0"
+      # Fint the ECS cluster ARN created earlier with the baseline stack
+      Cluster: "arn:aws:ecs:eu-central-1:072075398333:cluster/ping-pong-baseline-stack-FitTrackerAppCluster-Me4dqUUmCy9g"
+      DesiredCount: 2
+      TaskDefinition: !Ref PongTaskDefinitionBase
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: "DISABLED"
+          # HTTP only security group id created during the baseline stack
+          SecurityGroups:
+            - "sg-012d0e7fb5218c5cb"
+          # Private subnet ids (1 per AZ) created during the baseline stack
+          Subnets: 
+            - "subnet-082b7e95f58bbb30f"
+            - "subnet-0f773bf783972710c"
+
+  PongServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 7
+
+
