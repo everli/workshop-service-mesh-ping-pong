@@ -12,6 +12,22 @@ Parameters:
     Description: DNS namespace used by services e.g. app.local
     Default: local
 
+  ServiceDiscoveryNamespaceId:
+    Type: String
+    Description: Namespace ID to register service discovery service
+
+  SecurityGroupsId:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: VPC security group ID
+
+  SubnetsId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets to run ECS services
+
+  ECSClusterArn:
+    Type: String
+    Description: ECS Cluster ARN
+
 Resources:
   PongRepository:
     Type: AWS::ECR::Repository
@@ -42,7 +58,7 @@ Resources:
           Memory: 512
           Essential: true
           Command: 
-            -  "/bin/sh -c \"echo '<html> <head> <title>Amazon ECS Sample App</title> <style>body {margin-top: 40px; background-color: #333;} </style> </head><body> <div style=color:white;text-align:center> <h1>Amazon ECS Sample App</h1> <h2>Congratulations!</h2> <p>Your application is now running on a container in Amazon ECS.</p> </div></body></html>' >  /usr/local/apache2/htdocs/index.html && httpd-foreground\""
+            -  "/bin/sh -c \"echo 'Pong service' >  /usr/local/apache2/htdocs/index.html && httpd-foreground\""
 
   PongServiceDiscoveryRecord:
     Type: 'AWS::ServiceDiscovery::Service'
@@ -50,7 +66,7 @@ Resources:
       Name: "pong"
       DnsConfig:
         # Find the AWS Cloud Map namespace created earlier with the baseline stack
-        NamespaceId: "ns-hmmsti7qf3gwrz3g"
+        NamespaceId: !Ref ServiceDiscoveryNamespaceId
         DnsRecords:
           - Type: A
             TTL: 300
@@ -68,19 +84,16 @@ Resources:
       LaunchType: "FARGATE"
       PlatformVersion: "1.4.0"
       # Fint the ECS cluster ARN created earlier with the baseline stack
-      Cluster: "arn:aws:ecs:eu-central-1:072075398333:cluster/ping-pong-baseline-stack-FitTrackerAppCluster-Me4dqUUmCy9g"
+      Cluster: !Ref ECSClusterArn
       DesiredCount: 2
       TaskDefinition: !Ref PongTaskDefinitionBase
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: "DISABLED"
           # HTTP only security group id created during the baseline stack
-          SecurityGroups:
-            - "sg-012d0e7fb5218c5cb"
+          SecurityGroups: !Ref SecurityGroupsId
           # Private subnet ids (1 per AZ) created during the baseline stack
-          Subnets: 
-            - "subnet-082b7e95f58bbb30f"
-            - "subnet-0f773bf783972710c"
+          Subnets: !Ref SubnetsId
 
   PongServiceLogGroup:
     Type: AWS::Logs::LogGroup
